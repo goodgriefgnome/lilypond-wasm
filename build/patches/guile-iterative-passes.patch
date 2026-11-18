@@ -1,0 +1,103 @@
+--- a/libguile/expand.c
++++ b/libguile/expand.c
+@@ -1187,14 +1187,18 @@
+ static void
+ compute_assigned (SCM exp, SCM assigned)
+ {
++  /* Loop rather than recurse along list and sequence tails, so the C
++     stack depth does not grow with the length of a call's argument list
++     or of a body.  */
++ again:
+   if (scm_is_null (exp) || scm_is_false (exp))
+     return;
+ 
+   if (scm_is_pair (exp))
+     {
+       compute_assigned (CAR (exp), assigned);
+-      compute_assigned (CDR (exp), assigned);
+-      return;
++      exp = CDR (exp);
++      goto again;
+     }
+ 
+   if (!SCM_EXPANDED_P (exp))
+@@ -1244,8 +1248,8 @@
+ 
+     case SCM_EXPANDED_SEQ:
+       compute_assigned (REF (exp, SEQ, HEAD), assigned);
+-      compute_assigned (REF (exp, SEQ, TAIL), assigned);
+-      return;
++      exp = REF (exp, SEQ, TAIL);
++      goto again;
+ 
+     case SCM_EXPANDED_LAMBDA:
+       compute_assigned (REF (exp, LAMBDA, BODY), assigned);
+@@ -1326,8 +1330,14 @@
+     return exp;
+ 
+   if (scm_is_pair (exp))
+-    return scm_cons (convert_assignment (CAR (exp), assigned),
+-                     convert_assignment (CDR (exp), assigned));
++    {
++      /* Iterate along the list instead of recursing on its tail.  */
++      SCM rev = SCM_EOL, tail;
++      for (; scm_is_pair (exp); exp = CDR (exp))
++        rev = scm_cons (convert_assignment (CAR (exp), assigned), rev);
++      tail = convert_assignment (exp, assigned);
++      return scm_reverse_x (rev, tail);
++    }
+ 
+   if (!SCM_EXPANDED_P (exp))
+     abort ();
+@@ -1406,10 +1416,23 @@
+          convert_assignment (REF (exp, PRIMCALL, ARGS), assigned));
+ 
+     case SCM_EXPANDED_SEQ:
+-      return SEQ
+-        (REF (exp, SEQ, SRC),
+-         convert_assignment (REF (exp, SEQ, HEAD), assigned),
+-         convert_assignment (REF (exp, SEQ, TAIL), assigned));
++      {
++        /* A body of N forms is a chain of N nested SEQs; walk it
++           iteratively and rebuild it from the end.  */
++        SCM srcs = SCM_EOL, heads = SCM_EOL, ret;
++        for (; SCM_EXPANDED_P (exp)
++               && SCM_EXPANDED_TYPE (exp) == SCM_EXPANDED_SEQ;
++             exp = REF (exp, SEQ, TAIL))
++          {
++            srcs = scm_cons (REF (exp, SEQ, SRC), srcs);
++            heads = scm_cons (convert_assignment (REF (exp, SEQ, HEAD),
++                                                  assigned), heads);
++          }
++        ret = convert_assignment (exp, assigned);
++        for (; scm_is_pair (heads); heads = CDR (heads), srcs = CDR (srcs))
++          ret = SEQ (CAR (srcs), CAR (heads), ret);
++        return ret;
++      }
+ 
+     case SCM_EXPANDED_LAMBDA:
+       return LAMBDA
+--- a/libguile/memoize.c
++++ b/libguile/memoize.c
+@@ -537,8 +537,19 @@
+       }
+ 
+     case SCM_EXPANDED_SEQ:
+-      return MAKMEMO_SEQ (memoize (REF (exp, SEQ, HEAD), env),
+-                          memoize (REF (exp, SEQ, TAIL), env));
++      {
++        /* Walk a chain of nested SEQs iteratively, so that the C stack
++           does not grow with the number of forms in a body.  */
++        SCM heads = SCM_EOL, ret;
++        for (; SCM_EXPANDED_P (exp)
++               && SCM_EXPANDED_TYPE (exp) == SCM_EXPANDED_SEQ;
++             exp = REF (exp, SEQ, TAIL))
++          heads = scm_cons (memoize (REF (exp, SEQ, HEAD), env), heads);
++        ret = memoize (exp, env);
++        for (; scm_is_pair (heads); heads = CDR (heads))
++          ret = MAKMEMO_SEQ (CAR (heads), ret);
++        return ret;
++      }
+ 
+     case SCM_EXPANDED_LAMBDA:
+       /* The body will be a lambda-case. */

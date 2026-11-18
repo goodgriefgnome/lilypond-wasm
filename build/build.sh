@@ -183,6 +183,13 @@ step_guile() {
   # and the compiler's native word size must be read at run time, not baked in by the host.
   patch_once "$SRC/guile-3.0.11" guile-wasm.patch
   patch_once "$SRC/guile-3.0.11" guile-module-init.patch
+  # The next two keep native stack use down; browsers give Workers small stacks (see step_link).
+  # patches/guile-iterative-passes.patch: the evaluator's pre-passes recursed once per element
+  # of an argument list or body, so a long one in embedded Scheme could overflow on its own.
+  # patches/guile-outline-init.patch: one-time initialization was inlined into with_guile,
+  # whose frame stays live for the whole run.
+  patch_once "$SRC/guile-3.0.11" guile-iterative-passes.patch
+  patch_once "$SRC/guile-3.0.11" guile-outline-init.patch
   autotools_build guile "$SRC/guile-3.0.11" --with-threads=no --enable-mini-gmp --disable-jit \
     --disable-deprecated --disable-networking --without-libgmp-prefix \
     GUILE_FOR_BUILD="$host_guile" CC_FOR_BUILD=/usr/bin/cc ac_cv_func_strtol_l=no
@@ -239,10 +246,20 @@ step_lilypond() {
   # objects. Fonts, Scheme, and .ly init files are runtime data, taken from a native install of
   # the same version at packaging time (stubs/bin fakes the font tools configure insists on).
   log "lilypond (configure + flower + lily)"
+  # patches/lilypond-iterator-include.patch: newer libc++ no longer pulls in <iterator> for
+  # std::back_inserter.
+  # patches/lilypond-deferred-output.patch: engrave after the grammar returns instead of from
+  # inside it, so yyparse's frame is not on the native stack during engraving. It runs the
+  # thunk that patches/data-deferred-output.patch makes ly/init.ly define (see step_data);
+  # with an unpatched init.ly it does nothing.
+  patch_once "$SRC/lilypond-2.26.0" lilypond-iterator-include.patch
+  patch_once "$SRC/lilypond-2.26.0" lilypond-deferred-output.patch
   rm -rf "$BUILD/lilypond"; mkdir -p "$BUILD/lilypond"; cd "$BUILD/lilypond"
   # Prefer Homebrew's keg-only GNU tools when available, while retaining normal PATH discovery
-  # on Linux and other build hosts.
-  local tools="$HERE/stubs/bin" flex_include="" make_command="make"
+  # on Linux and other build hosts. FLEX_INCLUDE overrides where FlexLexer.h is found: point it
+  # at a directory holding only that header when it lives in /usr/include, which would otherwise
+  # put the host's C library headers on the wasm include path.
+  local tools="$HERE/stubs/bin" flex_include="${FLEX_INCLUDE:-}" make_command="make"
   if command -v brew >/dev/null 2>&1; then
     for formula in make bison flex; do
       local formula_prefix
@@ -276,7 +293,13 @@ step_link() {
   # The link LilyPond's own makefile would do, with the Emscripten flags the runtime needs:
   #  --spill-pointers  Boehm GC scans the C stack for roots; wasm locals live in unscannable
   #                    registers, so every live pointer is spilled to the linear-memory stack.
-  #  -g2               keeps function names, which the spill pass needs to find the stack pointer
+  #  --coalesce-locals The spill pass runs after all optimization and gives every value it spills
+  #                    a local of its own, which nothing then merges: Guile's VM engine went from
+  #                    14 locals to 819, and LilyPond's parser from 29 to 4981. Baseline compilers
+  #                    give each local its own native stack slot (in V8, every C->Scheme call then
+  #                    cost a 6.7 KB frame), and Workers get small stacks. Coalescing only renames
+  #                    locals whose lifetimes do not overlap; the spills themselves are untouched.
+  #  -g2              keeps function names, which the spill pass needs to find the stack pointer
   #                    (and which make wasm stack traces readable).
   #  STACK_SIZE        LilyPond and Guile's evaluator recurse deeply.
   log "link lilypond.mjs"
@@ -287,7 +310,7 @@ step_link() {
   em++ -O2 -g2 -fwasm-exceptions -sSUPPORT_LONGJMP=wasm \
     lily/out/*.o flower/out/library.a "$BUILD/link/spawn.o" \
     -Wl,--start-group $libs -lunistring -lffi -lgc -Wl,--end-group \
-    -sBINARYEN_EXTRA_PASSES=--spill-pointers \
+    -sBINARYEN_EXTRA_PASSES=--spill-pointers,--coalesce-locals \
     -sEMULATE_FUNCTION_POINTER_CASTS=1 \
     -sSTACK_SIZE=32MB -sINITIAL_MEMORY=256MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB \
     -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createLilyPond -sENVIRONMENT=web,worker,node \
@@ -316,7 +339,18 @@ step_data() {
     */2.26.0|*/2.26.0/) ;;
     *) echo "native LilyPond data directory is not 2.26.0: $datadir" >&2; exit 1 ;;
   esac
-  bun "$HERE/package-runtime.mjs" "$datadir"
+  # Stage a copy of the .ly and Scheme files to patch; fonts and PostScript are used in place.
+  #  patches/data-deferred-output.patch: ly/init.ly hands toplevel output to the thunk that
+  #    patches/lilypond-deferred-output.patch runs once parsing has finished.
+  #  patches/data-interpret-markup-in-scheme.patch: dispatch markup commands from Scheme, so
+  #    nested markup does not re-enter Scheme from C++ (and grow the native stack) per level.
+  local staged="$BUILD/data/2.26.0"
+  rm -rf "$BUILD/data"; mkdir -p "$staged"
+  cp -R "$datadir/ly" "$datadir/scm" "$staged/"
+  ln -s "$datadir/fonts" "$staged/fonts"; ln -s "$datadir/ps" "$staged/ps"
+  (cd "$staged" && patch -p1 <"$HERE/patches/data-deferred-output.patch" \
+    && patch -p1 <"$HERE/patches/data-interpret-markup-in-scheme.patch")
+  bun "$HERE/package-runtime.mjs" "$staged"
 }
 
 step_notices() {

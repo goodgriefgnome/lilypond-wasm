@@ -1,0 +1,76 @@
+--- a/ly/init.ly
++++ b/ly/init.ly
+@@ -63,35 +63,43 @@
+ 
+ #(ly:set-option 'protected-scheme-parsing #f)
+ 
+-#(let ((book-handler (if (defined? 'default-toplevel-book-handler)
+-                         default-toplevel-book-handler
+-                         toplevel-book-handler)))
+-   (cond ((pair? toplevel-bookparts)
+-          (let ((book (ly:make-book $defaultpaper $defaultheader)))
+-            (for-each (lambda (part)
+-                        (ly:book-add-bookpart! book part))
+-                      (reverse! toplevel-bookparts))
+-            (set! toplevel-bookparts (list))
+-            ;; if scores have been defined after the last explicit \bookpart:
+-            (if (pair? toplevel-scores)
+-                (for-each (lambda (score)
+-                            (ly:book-add-score! book score))
+-                          (reverse! toplevel-scores)))
+-            (set! toplevel-scores (list))
+-            (book-handler book)))
+-         ((or (pair? toplevel-scores) output-empty-score-list)
+-          (let ((book (apply ly:make-book $defaultpaper
+-                             $defaultheader toplevel-scores)))
+-            (set! toplevel-scores (list))
+-            (book-handler book)))))
++%% Output of the toplevel scores and bookparts, and the checks that follow
++%% it.  Lily_parser::parse_file calls this once parsing has finished, so
++%% that engraving does not run from inside the grammar (whose large frame
++%% would otherwise stay on the native stack throughout).  Errors it reports
++%% are located at the definition, since parsing has finished by then.
++#(define toplevel-output-location (*location*))
++#(define (toplevel-output-thunk)
++  (let ((book-handler (if (defined? 'default-toplevel-book-handler)
++                           default-toplevel-book-handler
++                           toplevel-book-handler)))
++     (cond ((pair? toplevel-bookparts)
++            (let ((book (ly:make-book $defaultpaper $defaultheader)))
++              (for-each (lambda (part)
++                          (ly:book-add-bookpart! book part))
++                        (reverse! toplevel-bookparts))
++              (set! toplevel-bookparts (list))
++              ;; if scores have been defined after the last explicit \bookpart:
++              (if (pair? toplevel-scores)
++                  (for-each (lambda (score)
++                              (ly:book-add-score! book score))
++                            (reverse! toplevel-scores)))
++              (set! toplevel-scores (list))
++              (book-handler book)))
++           ((or (pair? toplevel-scores) output-empty-score-list)
++            (let ((book (apply ly:make-book $defaultpaper
++                               $defaultheader toplevel-scores)))
++              (set! toplevel-scores (list))
++              (book-handler book)))))
+ 
+-#(if (eq? expect-error (ly:parser-has-error?))
+-  (ly:parser-clear-error)
+-  (if expect-error
+-   (ly:parser-error (G_ "expected error, but none found"))))
++  (if (eq? expect-error (ly:parser-has-error?))
++    (ly:parser-clear-error)
++    (if expect-error
++     (ly:parser-error (G_ "expected error, but none found")
++                      toplevel-output-location)))
+ 
+-#(if (ly:get-option 'verbose)
+-  (begin
+-   (display "gc time taken: ")
+-   (display (* 1.0 (/ (cdr (assoc 'gc-time-taken (gc-stats))) internal-time-units-per-second)))
+-   (display "\n")))
++  (if (ly:get-option 'verbose)
++    (begin
++     (display "gc time taken: ")
++     (display (* 1.0 (/ (cdr (assoc 'gc-time-taken (gc-stats))) internal-time-units-per-second)))
++     (display "\n"))))

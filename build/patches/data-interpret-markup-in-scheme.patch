@@ -1,0 +1,40 @@
+--- a/scm/lily/markup.scm
++++ b/scm/lily/markup.scm
+@@ -50,7 +50,36 @@
+       empty-markup))
+ 
+ 
+-(define-public interpret-markup ly:text-interface::interpret-markup)
++;; Nesting depth of markup commands being interpreted, for max-markup-depth.
++(define markup-depth 0)
++
++;; This mirrors Text_interface::interpret_markup (lily/text-interface.cc),
++;; which dispatches a markup command by calling back into Scheme.  Doing the
++;; dispatch here instead makes nested markup a chain of Scheme-to-Scheme
++;; calls, which Guile runs on its own heap-allocated stack, rather than one
++;; C++-to-Scheme re-entry (and so one more native stack frame chain) per
++;; nesting level.  Strings still go to C++, which renders them without
++;; calling back.
++(define-public (interpret-markup layout props markup)
++  (if (and (pair? markup) (markup-function? (car markup)))
++      (let ((max-depth (or (ly:get-option 'max-markup-depth) 1024)))
++        (if (>= markup-depth max-depth)
++            (begin
++              (ly:non-fatal-error
++               (G_ "Markup depth exceeds maximal value of ~a; Markup: ~a")
++               max-depth (procedure-name (car markup)))
++              empty-stencil)
++            (let ((stil (dynamic-wind
++                         (lambda () (set! markup-depth (1+ markup-depth)))
++                         (lambda () (apply (car markup) layout props (cdr markup)))
++                         (lambda () (set! markup-depth (1- markup-depth))))))
++              (if (ly:stencil? stil)
++                  stil
++                  (begin
++                    (ly:programming-error
++                     "markup interpretation must yield stencil")
++                    empty-stencil)))))
++      (ly:text-interface::interpret-markup layout props markup)))
+ 
+ (define-public (interpret-markup-list layout props markup-list)
+   (fold-right

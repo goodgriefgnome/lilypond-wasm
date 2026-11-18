@@ -10,6 +10,11 @@ flex, guile 3.0.11 and lilypond 2.26.0. On a Mac:
 brew install emscripten meson ninja cmake autoconf pkg-config bison flex guile lilypond
 ```
 
+On Linux, `FlexLexer.h` usually sits in `/usr/include`, and putting that on the WebAssembly
+include path pulls in the host's C library headers. Copy the header into a directory of its own
+and point `FLEX_INCLUDE` at it. If LilyPond's data directory can't be found by running `lilypond`,
+set `LILYPOND_DATADIR_NATIVE` to its `share/lilypond/2.26.0` folder.
+
 Then:
 
 ```sh

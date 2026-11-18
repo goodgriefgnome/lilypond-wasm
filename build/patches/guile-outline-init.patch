@@ -1,0 +1,20 @@
+--- a/libguile/threads.c
++++ b/libguile/threads.c
+@@ -571,7 +571,16 @@
+ 	  /* First thread ever to enter Guile.  Run the full
+ 	     initialization.
+ 	  */
+-	  scm_i_init_guile (base);
++	  /* Call through a volatile pointer so that no optimizer (LLVM or,
++	     on WebAssembly, Binaryen, which inlines every function that has
++	     a single caller) can inline the initialization into this
++	     function.  Its caller, with_guile, stays on the native stack
++	     for the whole session, so an inlined copy would keep
++	     initialization's large frame live long after it finished.  */
++	  {
++	    void (*volatile init_guile) (void *) = scm_i_init_guile;
++	    init_guile (base);
++	  }
+ 
+ #if SCM_USE_PTHREAD_THREADS
+           /* Allow other threads to come in later.  */

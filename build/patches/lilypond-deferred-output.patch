@@ -1,0 +1,37 @@
+--- a/lily/lily-parser.cc
++++ b/lily/lily-parser.cc
+@@ -34,6 +34,8 @@
+ #include "sources.hh"
+ #include "warn.hh"
+ #include "program-option.hh"
++#include "lily-imports.hh"
++#include "parse-scm.hh"
+ 
+ Lily_parser::Lily_parser (Sources *sources)
+ {
+@@ -115,6 +117,25 @@
+     }
+   while (!lexer_->is_clean ());
+ 
++  // The init file leaves the output of toplevel scores and bookparts to a
++  // thunk that runs here, once the grammar has returned, rather than as
++  // embedded Scheme at its end.  All of engraving and output happens in
++  // that thunk; running it from inside the grammar would keep yyparse's
++  // large frame (and the embedded-Scheme machinery) on the native stack
++  // for the whole of it.
++  scm_c_with_fluid (
++    Lily::f_parser, self_scm (),
++    [] (void *p) -> SCM {
++      auto *const parser = static_cast<Lily_parser *> (p);
++      SCM thunk = parser->lexer_->lookup_identifier_symbol (
++        ly_symbol2scm ("toplevel-output-thunk"));
++      if (ly_is_procedure (thunk)
++          && SCM_UNBNDP (evaluate_embedded_scheme (thunk, Input (), parser)))
++        parser->error_level_ = 1;
++      return SCM_UNSPECIFIED;
++    },
++    this);
++
+   scm_set_current_module (mod);
+ 
+   error_level_ = error_level_ | lexer_->error_level_;
