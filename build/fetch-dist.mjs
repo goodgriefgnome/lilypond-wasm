@@ -14,7 +14,7 @@ import { DIST_FILES } from '../src/dist-files.mjs'
 
 export const OWNER = 'goodgriefgnome'
 export const REPO = 'lilypond-wasm'
-export const RELEASE = 'v0.3.0'
+export const RELEASE = '0.3.0'
 export const FILES = DIST_FILES
 export const DIST_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 
