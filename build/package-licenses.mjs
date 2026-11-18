@@ -8,9 +8,10 @@ const root = join(here, '..')
 const work = process.env.WASM_WORK_DIR || join(root, 'work')
 const licenses = join(root, 'licenses')
 const sources = new Map(
+  // A source's first URL is the project's own; any others are mirrors.
   JSON.parse(await readFile(join(here, 'sources.json'))).map(([archive, url]) => [
     archive.replace(/\.tar\.(?:gz|xz)$/, ''),
-    url,
+    Array.isArray(url) ? url[0] : url,
   ]),
 )
 const source = (component) => sources.get(component)
