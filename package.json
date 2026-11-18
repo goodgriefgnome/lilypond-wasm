@@ -1,5 +1,5 @@
 {
-  "name": "@goodgriefgnome/lilypond-wasm",
+  "name": "lilypond-wasm",
   "version": "0.3.1",
   "type": "module",
   "description": "Compile LilyPond scores in browsers, Node.js, and Bun with WebAssembly",

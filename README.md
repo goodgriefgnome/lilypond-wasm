@@ -1,4 +1,4 @@
-# @goodgriefgnome/lilypond-wasm
+# lilypond-wasm
 
 Run the `lilypond` compiler anywhere you can run WASM. The complete runtime comes with the
 package (installing it downloads the engine from this repository's GitHub release), so compiling
@@ -23,7 +23,7 @@ same `github:` specifier.
 ## Compile with a server runtime (node, deno, bun, etc)
 
 ```js
-import { compile } from '@goodgriefgnome/lilypond-wasm'
+import { compile } from 'lilypond-wasm'
 
 const result = await compile('\\version "2.26.0" { c4 d e f }', { format: 'pdf' })
 const pdf = result.files['score.pdf'] // Uint8Array
@@ -47,7 +47,7 @@ The engine is about 30 MB to download. To start it early and show progress, call
 reusable compiler:
 
 ```js
-import { createReusableCompiler } from '@goodgriefgnome/lilypond-wasm'
+import { createReusableCompiler } from 'lilypond-wasm'
 
 const compiler = createReusableCompiler()
 await compiler.preload({
@@ -61,7 +61,7 @@ If compiling a batch, then you can reduce some of the cost by making a reusable 
 Call `dispose()` to free up the resources when done.
 
 ```js
-import { createReusableCompiler } from '@goodgriefgnome/lilypond-wasm'
+import { createReusableCompiler } from 'lilypond-wasm'
 
 const compiler = createReusableCompiler()
 try {
