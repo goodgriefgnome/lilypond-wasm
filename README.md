@@ -9,15 +9,16 @@ and at 38MB the package is quite heavy
 
 ## Install
 
-Install it from GitHub:
+Install it from this repository on GitHub, with its owner and name in place of
+`<owner>/<repo>`:
 
 ```sh
-npm install github:goodgriefgnome/lilypond-wasm
+npm install github:<owner>/<repo>
 ```
 
-Installing runs `prepare`, which downloads the engine pinned in `src/dist-files.mjs` from this
-repository's release and checks it against the pinned SHA-256 hashes. Bun, pnpm and Yarn accept
-the same `github:` specifier.
+Installing runs `prepare`, which downloads the engine pinned in `src/dist-files.mjs` from the
+release it names and checks it against the pinned SHA-256 hashes. Bun, pnpm and Yarn accept the
+same `github:` specifier.
 
 ## Compile with a server runtime (node, deno, bun, etc)
 
