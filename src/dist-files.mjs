@@ -5,11 +5,11 @@ export const DIST_FILES = {
     189738,
   ],
   'lilypond.wasm': [
-    'd1df997dcbb2fd4f8e2f3182d879cc7045feb24dfbbb5528d68c87c47b7586ed',
-    15199539,
+    '66b4a630cfd536eb7e6b921f889c6b2ec7a9cdaada07260db787c8a0f2ed406d',
+    15197796,
   ],
   'runtime.data.bin': [
-    '2bf95072a112320834ac344356d9a1df1125f90fb2b1b769cbcdb2e9e56f0c04',
-    15658550,
+    '513c83e0e6d8b83dfce494d37b7ef59c63d9241202df0b83b1eb93c013eb089b',
+    15711138,
   ],
 }
