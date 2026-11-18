@@ -8,7 +8,7 @@
  * Needs dist/ already fetched (`bun run fetch-dist`).
  */
 import { readFile } from 'node:fs/promises'
-import type { CompileOptions } from '@sightread/lilypond-wasm'
+import type { CompileOptions } from '@goodgriefgnome/lilypond-wasm'
 import { assertDist } from '../build/fetch-dist.mjs'
 
 const runsArg = process.argv.indexOf('--runs')

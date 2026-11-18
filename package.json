@@ -1,5 +1,5 @@
 {
-  "name": "@sightread/lilypond-wasm",
+  "name": "@goodgriefgnome/lilypond-wasm",
   "version": "0.3.1",
   "type": "module",
   "description": "Compile LilyPond scores in browsers, Node.js, and Bun with WebAssembly",
@@ -32,10 +32,11 @@
     "demo": "bun build/site.mjs --serve",
     "fetch-dist": "bun build/fetch-dist.mjs",
     "fetch-sources": "bun build/fetch-sources.mjs",
-    "prepack": "bun build/verify-package.mjs",
+    "prepack": "node build/verify-package.mjs",
+    "prepare": "node build/fetch-dist.mjs",
     "site": "bun build/site.mjs",
     "test": "bun test",
     "test:parity": "bun test/parity.mjs"
   },
-  "repository": "github:sightread/lilypond-wasm"
+  "repository": "github:goodgriefgnome/lilypond-wasm"
 }
