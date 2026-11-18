@@ -1,6 +1,18 @@
+import { DIST_RELEASE } from './src/dist-files.mjs'
 import { createReusableCompiler } from './src/index.mjs'
 
 const $ = (id) => document.getElementById(id)
+
+// Which engine this page runs. The site is only assembled from a dist/ that matches these pins.
+{
+  const { owner, repo, tag, lilypond } = DIST_RELEASE
+  const link = document.createElement('a')
+  link.href = `https://github.com/${owner}/${repo}/releases/tag/${tag}`
+  link.target = '_blank'
+  link.rel = 'noopener'
+  link.textContent = tag
+  $('engine-version').append('Engine ', link, ` · LilyPond ${lilypond}`)
+}
 
 // Theme toggle: overrides the prefers-color-scheme default and remembers the choice.
 function currentTheme() {

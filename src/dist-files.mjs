@@ -1,3 +1,11 @@
+/** The release the files in dist/ come from. Written by build/pin-dist.mjs. */
+export const DIST_RELEASE = {
+  owner: 'goodgriefgnome',
+  repo: 'lilypond-wasm',
+  tag: '0.3.1',
+  lilypond: '2.26.0',
+}
+
 /** The files in dist/: [sha256, size in bytes]. */
 export const DIST_FILES = {
   'lilypond.mjs': [

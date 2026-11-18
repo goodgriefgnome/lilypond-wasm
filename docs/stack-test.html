@@ -169,7 +169,7 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Test</th><th>This build</th><th>Published v0.2.0</th></tr>
+        <tr><th>Test</th><th id="this-build">This build</th><th>Published v0.2.0</th></tr>
       </thead>
       <tbody id="results"></tbody>
     </table>
@@ -179,8 +179,10 @@
   <div id="preview"></div>
 
   <script type="module">
+    import { DIST_RELEASE } from './src/dist-files.mjs'
     const $ = (id) => document.getElementById(id)
     $('ua').textContent = navigator.userAgent
+    $('this-build').textContent = `This build (${DIST_RELEASE.tag})`
     const log = (text) => {
       $('log').textContent += text + '\n'
     }
@@ -238,7 +240,7 @@
 
     // ---- 2. Compile in a Worker ------------------------------------------------------------
     const ENGINES = [
-      { id: 'new', label: 'This build', module: './src/index.mjs' },
+      { id: 'new', label: `This build (${DIST_RELEASE.tag})`, module: './src/index.mjs' },
       { id: 'legacy', label: 'Published v0.2.0', module: './legacy/src/index.mjs' },
     ]
     const nested = (n) => `\\version "2.26.0"\n\\markup ${'\\bold '.repeat(n)}"x"\n`

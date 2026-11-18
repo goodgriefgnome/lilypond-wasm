@@ -38,5 +38,6 @@ and redeploys Pages. The C libraries, Guile and Emscripten are cached, so only t
 one after `build/` changes, does the full build.
 
 To release by hand, attach those three files to a GitHub release, then run
-`bun build/pin-dist.mjs <owner> <tag>` to update `build/fetch-dist.mjs`, `src/dist-files.mjs` and
-`package.json` to match.
+`bun build/pin-dist.mjs <owner> <tag>`. It records the release and the files' hashes in
+`src/dist-files.mjs` (which `fetch-dist` downloads from and the demo shows as the engine version)
+and sets the version in `package.json`.

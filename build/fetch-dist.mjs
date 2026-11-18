@@ -10,11 +10,11 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DIST_FILES } from '../src/dist-files.mjs'
+import { DIST_FILES, DIST_RELEASE } from '../src/dist-files.mjs'
 
-export const OWNER = 'goodgriefgnome'
-export const REPO = 'lilypond-wasm'
-export const RELEASE = '0.3.1'
+export const OWNER = DIST_RELEASE.owner
+export const REPO = DIST_RELEASE.repo
+export const RELEASE = DIST_RELEASE.tag
 export const FILES = DIST_FILES
 export const DIST_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 
