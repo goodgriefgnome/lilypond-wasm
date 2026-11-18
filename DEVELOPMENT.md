@@ -30,6 +30,13 @@ The last two steps (`data`, `notices`) copy LilyPond's data directory and regene
 
 # Releasing
 
-Attach `dist/lilypond.mjs`, `dist/lilypond.wasm` and `dist/runtime.data.bin` to a GitHub
-release, then update `RELEASE` in `build/fetch-dist.mjs` and the hashes and sizes in
-`src/dist-files.mjs` to match.
+Run the **Release** workflow from the Actions tab with the new version (e.g. `0.4.0`). It builds
+everything from source on Linux, using LilyPond's official Linux release for the data directory,
+then runs the tests. It publishes `dist/lilypond.mjs`, `dist/lilypond.wasm` and
+`dist/runtime.data.bin` as a release, commits the result of `bun build/pin-dist.mjs` to `main`,
+and redeploys Pages. The C libraries, Guile and Emscripten are cached, so only the first run, or
+one after `build/` changes, does the full build.
+
+To release by hand, attach those three files to a GitHub release, then run
+`bun build/pin-dist.mjs <owner> <tag>` to update `build/fetch-dist.mjs`, `src/dist-files.mjs` and
+`package.json` to match.

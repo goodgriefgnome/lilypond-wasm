@@ -1,0 +1,161 @@
+# Build the engine from source, test it, publish it as a GitHub release, and point the package
+# at it. Run from the Actions tab with the new version, e.g. 0.4.0.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag, e.g. 0.4.0
+        required: true
+
+permissions:
+  contents: write # create the release, push the commit that points fetch-dist at it
+  actions: write # start the Pages deploy: pushes made with GITHUB_TOKEN don't trigger workflows
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  EMSDK_VERSION: 7.0.0
+  GUILE_VERSION: 3.0.11
+  LILYPOND_VERSION: 2.26.0
+  TAG: ${{ inputs.version }}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Check the version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 0.4.0"; exit 1; }
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Host tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ninja-build cmake autoconf automake libtool pkg-config gperf \
+            bison flex libfl-dev texinfo gettext autopoint \
+            libgc-dev libunistring-dev libffi-dev libgmp-dev libreadline-dev
+          # Ubuntu's meson is older than fontconfig needs.
+          pip install --user --break-system-packages 'meson>=1.6.1'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # FlexLexer.h on its own: /usr/include would put the host's libc headers on the wasm
+          # include path (see DEVELOPMENT.md).
+          mkdir -p "$RUNNER_TEMP/flexinc" && cp /usr/include/FlexLexer.h "$RUNNER_TEMP/flexinc/"
+          echo "FLEX_INCLUDE=$RUNNER_TEMP/flexinc" >> "$GITHUB_ENV"
+
+      # Each cache is saved as soon as what it holds is built, so a later failure doesn't lose it.
+      - name: Restore Emscripten
+        id: emsdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}-ubuntu-24.04
+      - name: Emscripten
+        if: steps.emsdk-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
+          ~/emsdk/emsdk install "$EMSDK_VERSION"
+      - name: Save Emscripten
+        if: steps.emsdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/emsdk
+          key: ${{ steps.emsdk-cache.outputs.cache-primary-key }}
+      - run: ~/emsdk/emsdk activate "$EMSDK_VERSION"
+
+      # Guile's Scheme is cross-compiled by a native Guile of the same version.
+      - name: Restore native Guile
+        id: guile-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/native-guile
+          key: native-guile-${{ env.GUILE_VERSION }}-ubuntu-24.04
+      - name: Native Guile
+        if: steps.guile-cache.outputs.cache-hit != 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL "https://ftp.gnu.org/gnu/guile/guile-$GUILE_VERSION.tar.gz" | tar xz
+          cd "guile-$GUILE_VERSION"
+          ./configure --prefix="$HOME/native-guile" --disable-static
+          make -j"$(nproc)"
+          make install
+      - name: Save native Guile
+        if: steps.guile-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/native-guile
+          key: ${{ steps.guile-cache.outputs.cache-primary-key }}
+      - run: echo "$HOME/native-guile/bin" >> "$GITHUB_PATH"
+
+      # LilyPond's fonts, Scheme and .ly files come from its official Linux release.
+      - name: Native LilyPond data
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL "https://gitlab.com/lilypond/lilypond/-/releases/v$LILYPOND_VERSION/downloads/lilypond-$LILYPOND_VERSION-linux-x86_64.tar.gz" | tar xz
+          echo "LILYPOND_DATADIR_NATIVE=$RUNNER_TEMP/lilypond-$LILYPOND_VERSION/share/lilypond/$LILYPOND_VERSION" >> "$GITHUB_ENV"
+
+      - run: bun run fetch-sources
+
+      # The C libraries and Guile, keyed on everything that goes into them.
+      - name: Restore libraries
+        id: prefix-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: work/prefix
+          key: prefix-${{ env.EMSDK_VERSION }}-${{ hashFiles('build/sources.json', 'build/build.sh', 'build/patches/**', 'build/stubs/**') }}
+
+      - name: Build libraries
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          for step in zlib libpng expat freetype harfbuzz libunistring libffi gc guile glib fribidi pixman fontconfig cairo pango; do
+            ./build/build.sh "$step"
+          done
+      - name: Save libraries
+        if: steps.prefix-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: work/prefix
+          key: ${{ steps.prefix-cache.outputs.cache-primary-key }}
+
+      - name: Build LilyPond and the runtime data
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          for step in lilypond link data; do ./build/build.sh "$step"; done
+          ls -la dist
+
+      - name: Pin and test
+        run: |
+          bun build/pin-dist.mjs "$GITHUB_REPOSITORY_OWNER" "$TAG"
+          bun test
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
+            --notes "Engine built from $GITHUB_SHA by the Release workflow (Emscripten $EMSDK_VERSION, LilyPond $LILYPOND_VERSION)." \
+            dist/lilypond.mjs dist/lilypond.wasm dist/runtime.data.bin
+
+      - name: Point fetch-dist at the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dist-files.mjs build/fetch-dist.mjs package.json
+          git commit -m "Point fetch-dist at the $TAG engine"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
