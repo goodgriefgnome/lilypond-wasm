@@ -12,9 +12,9 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DIST_FILES } from '../src/dist-files.mjs'
 
-export const OWNER = 'sightread'
+export const OWNER = 'goodgriefgnome'
 export const REPO = 'lilypond-wasm'
-export const RELEASE = 'v0.1.1'
+export const RELEASE = 'v0.3.0'
 export const FILES = DIST_FILES
 export const DIST_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Worker Stack Test</title>
+  <style>
+    :root {
+      --surface: #fffcf0;
+      --surface-2: #f2f0e5;
+      --line: #e6e4d9;
+      --ink: #100f0f;
+      --ink-2: #6f6e69;
+      --accent: #5e409d;
+      --good: #66800b;
+      --wrong: #af3029;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme='light']) {
+        --surface: #100f0f;
+        --surface-2: #1c1b1a;
+        --line: #282726;
+        --ink: #cecdc3;
+        --ink-2: #878580;
+        --accent: #8b7ec8;
+        --good: #879a39;
+        --wrong: #d14d41;
+      }
+    }
+    :root[data-theme='dark'] {
+      --surface: #100f0f;
+      --surface-2: #1c1b1a;
+      --line: #282726;
+      --ink: #cecdc3;
+      --ink-2: #878580;
+      --accent: #8b7ec8;
+      --good: #879a39;
+      --wrong: #d14d41;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      max-width: 900px;
+      margin: 0 auto 60px;
+      padding: 0 16px;
+      font: 16px system-ui;
+      line-height: 1.5;
+      color: var(--ink);
+      background: var(--surface);
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin: 28px 0 4px;
+    }
+    h2 {
+      font-size: 1.15rem;
+      margin: 28px 0 8px;
+    }
+    p,
+    li {
+      color: var(--ink-2);
+    }
+    code,
+    pre {
+      font: 13px ui-monospace, monospace;
+    }
+    #ua {
+      font: 12px ui-monospace, monospace;
+      color: var(--ink-2);
+      overflow-wrap: anywhere;
+    }
+    button {
+      font: inherit;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8px 0;
+      font-size: 14px;
+    }
+    th,
+    td {
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      color: var(--ink-2);
+      font-weight: 600;
+    }
+    td.num {
+      font-variant-numeric: tabular-nums;
+    }
+    .ok {
+      color: var(--good);
+      font-weight: 600;
+    }
+    .fail {
+      color: var(--wrong);
+      font-weight: 600;
+    }
+    .pending {
+      color: var(--ink-2);
+    }
+    pre {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    #preview svg {
+      max-width: 100%;
+      height: auto;
+      background: #fff;
+      border-radius: 6px;
+    }
+  </style>
+
+  <h1>Worker stack test</h1>
+  <p>
+    Compiles LilyPond in a Web Worker with two engines: this build, with the stack-depth fixes,
+    and the published v0.2.0 engine. Workers get small native stacks in some browsers, and
+    v0.2.0 was reported to overflow WebKit's.
+  </p>
+  <p id="ua"></p>
+
+  <h2>1. Stack budget</h2>
+  <p>
+    How many times a tiny function can call itself before the stack runs out. The numbers only
+    compare threads within one browser; frame sizes differ between engines.
+  </p>
+  <button id="probe">Measure</button>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Thread</th><th>WebAssembly calls</th><th>JavaScript calls</th></tr>
+      </thead>
+      <tbody id="probe-rows">
+        <tr><td>Main thread</td><td class="num" id="p-main-wasm">–</td><td class="num" id="p-main-js">–</td></tr>
+        <tr><td>Worker</td><td class="num" id="p-worker-wasm">–</td><td class="num" id="p-worker-js">–</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>2. Compile in a Worker</h2>
+  <p>
+    Downloads each engine on first use, about 30 MB apiece. The last row searches for the deepest
+    <code>\markup \bold \bold … "x"</code> that compiles, up to 1000 levels.
+  </p>
+  <button id="run">Run both engines</button>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Test</th><th>This build</th><th>Published v0.2.0</th></tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+  </div>
+  <h2>Log</h2>
+  <pre id="log"></pre>
+  <div id="preview"></div>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id)
+    $('ua').textContent = navigator.userAgent
+    const log = (text) => {
+      $('log').textContent += text + '\n'
+    }
+
+    // ---- 1. Stack budget -------------------------------------------------------------------
+    // (module (func $rec (export "rec") depth += 1; call $rec) plus "depth" and "reset" exports)
+    const PROBE_WASM =
+      'AGFzbQEAAAABCAJgAABgAAF/AwQDAAEABgYBfwFBAAsHFwMDcmVjAAAFZGVwdGgAAQVyZXNldAACChkDCwAjAEEBaiQAEAALBAAjAAsGAEEAJAAL'
+    const probeSource = `
+      const bytes = Uint8Array.from(atob(${JSON.stringify(PROBE_WASM)}), (c) => c.charCodeAt(0))
+      async function measure() {
+        const { instance } = await WebAssembly.instantiate(bytes)
+        const e = instance.exports
+        const wasm = () => { e.reset(); try { e.rec() } catch {} return e.depth() }
+        let n = 0
+        const rec = () => { n++; rec() }
+        const js = () => { n = 0; try { rec() } catch {} return n }
+        // Run each a few times: the first runs may be in a different tier.
+        wasm(); wasm(); js(); js()
+        return { wasm: wasm(), js: js() }
+      }`
+    const measureHere = new Function(`${probeSource}; return measure()`)
+    function measureInWorker() {
+      const url = URL.createObjectURL(
+        new Blob([`${probeSource}; measure().then((r) => postMessage(r), (e) => postMessage({ error: String(e) }))`], {
+          type: 'text/javascript',
+        }),
+      )
+      const worker = new Worker(url)
+      return new Promise((resolve) => {
+        worker.onmessage = ({ data }) => {
+          worker.terminate()
+          URL.revokeObjectURL(url)
+          resolve(data)
+        }
+      })
+    }
+    $('probe').onclick = async () => {
+      $('probe').disabled = true
+      try {
+        const main = await measureHere()
+        $('p-main-wasm').textContent = main.wasm.toLocaleString()
+        $('p-main-js').textContent = main.js.toLocaleString()
+        const worker = await measureInWorker()
+        if (worker.error) throw new Error(worker.error)
+        $('p-worker-wasm').textContent = worker.wasm.toLocaleString()
+        $('p-worker-js').textContent = worker.js.toLocaleString()
+        log(`stack budget: main wasm=${main.wasm} js=${main.js}; worker wasm=${worker.wasm} js=${worker.js}`)
+      } catch (error) {
+        log(`stack budget failed: ${error}`)
+      } finally {
+        $('probe').disabled = false
+      }
+    }
+
+    // ---- 2. Compile in a Worker ------------------------------------------------------------
+    const ENGINES = [
+      { id: 'new', label: 'This build', module: './src/index.mjs' },
+      { id: 'legacy', label: 'Published v0.2.0', module: './legacy/src/index.mjs' },
+    ]
+    const nested = (n) => `\\version "2.26.0"\n\\markup ${'\\bold '.repeat(n)}"x"\n`
+    const TESTS = [
+      { id: 'one', label: 'One note', source: async () => `\\version "2.26.0"\n{ c'4 }\n` },
+      {
+        id: 'morgenlied',
+        label: 'Real piece (morgenlied.ly)',
+        source: async () => (await fetch('./morgenlied.ly')).text(),
+      },
+      { id: 'markup20', label: 'Nested markup, 20 levels', source: async () => nested(20) },
+    ]
+    const cell = (test, engine) => $(`r-${test}-${engine}`)
+    for (const row of [...TESTS, { id: 'deepest', label: 'Deepest nested markup' }]) {
+      const tr = document.createElement('tr')
+      tr.innerHTML = `<td>${row.label}</td>` + ENGINES.map((e) => `<td id="r-${row.id}-${e.id}" class="pending">–</td>`).join('')
+      $('results').append(tr)
+    }
+
+    function describe(error) {
+      const name = error?.name || 'Error'
+      const message = error?.message || '(empty message)'
+      const logs = Array.isArray(error?.logs) ? `\n  last log lines: ${error.logs.slice(-3).join(' | ')}` : ''
+      return `${name}: ${message}${logs}`
+    }
+
+    // One compiler per engine, replaced after any failure: a stack overflow can leave the
+    // worker in a bad state, and a test should not inherit that.
+    async function runEngine(engine) {
+      const { createReusableCompiler } = await import(engine.module)
+      let compiler = createReusableCompiler()
+      async function attempt(source) {
+        const start = performance.now()
+        try {
+          const result = await compiler.compile(source, { format: 'svg' })
+          return { ok: true, ms: performance.now() - start, files: result.files }
+        } catch (error) {
+          compiler.dispose()
+          compiler = createReusableCompiler()
+          return { ok: false, ms: performance.now() - start, error }
+        }
+      }
+      const show = (id, ok, text) => {
+        const td = cell(id, engine.id)
+        td.className = ok ? 'ok' : 'fail'
+        td.textContent = text
+      }
+      try {
+        for (const test of TESTS) {
+          cell(test.id, engine.id).textContent = 'running…'
+          const result = await attempt(await test.source())
+          if (result.ok) {
+            show(test.id, true, `OK (${(result.ms / 1000).toFixed(1)} s)`)
+            if (engine.id === 'new' && test.id === 'morgenlied' && result.files['score.svg'])
+              $('preview').innerHTML = new TextDecoder().decode(result.files['score.svg'])
+          } else {
+            show(test.id, false, 'failed')
+            log(`${engine.label}, ${test.label}: ${describe(result.error)}`)
+          }
+        }
+        // Deepest nested markup that compiles, by bisection between a passing and a failing depth.
+        cell('deepest', engine.id).textContent = 'searching…'
+        const MAX = 1000
+        if (!(await attempt(nested(1))).ok) {
+          show('deepest', false, 'fails at 1')
+        } else if ((await attempt(nested(MAX))).ok) {
+          show('deepest', true, `≥ ${MAX}`)
+        } else {
+          let good = 1, bad = MAX
+          while (bad - good > 1) {
+            const mid = (good + bad) >> 1
+            cell('deepest', engine.id).textContent = `searching… (${good}–${bad})`
+            if ((await attempt(nested(mid))).ok) good = mid
+            else bad = mid
+          }
+          show('deepest', true, `${good}`)
+        }
+        log(`${engine.label}: done`)
+      } catch (error) {
+        log(`${engine.label}: could not run: ${describe(error)}`)
+      } finally {
+        compiler.dispose()
+      }
+    }
+
+    $('run').onclick = async () => {
+      $('run').disabled = true
+      for (const engine of ENGINES) await runEngine(engine)
+      $('run').disabled = false
+    }
+  </script>
+</html>
