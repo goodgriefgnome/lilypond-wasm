@@ -1,0 +1,42 @@
+--- a/pango/shape.c
++++ b/pango/shape.c
+@@ -38,14 +38,27 @@
+ 
+ static hb_buffer_t *cached_buffer = NULL; /* MT-safe */
+ G_LOCK_DEFINE_STATIC (cached_buffer);
++#ifdef __EMSCRIPTEN__
++/* Without threads, Emscripten's pthread_mutex_trylock always succeeds, so the
++   lock cannot tell that the cached buffer is in use when shaping re-enters
++   itself (HarfBuzz asks for a glyph advance, which computes font metrics,
++   which lays out and shapes text).  Track it here instead.  */
++static gboolean cached_buffer_in_use = FALSE;
++#endif
+ 
+ static hb_buffer_t *
+ acquire_buffer (gboolean *free_buffer)
+ {
+   hb_buffer_t *buffer;
+ 
++#ifdef __EMSCRIPTEN__
++  if (G_LIKELY (!cached_buffer_in_use))
++    {
++      cached_buffer_in_use = TRUE;
++#else
+   if (G_LIKELY (G_TRYLOCK (cached_buffer)))
+     {
++#endif
+       if (G_UNLIKELY (!cached_buffer))
+         cached_buffer = hb_buffer_create ();
+ 
+@@ -68,7 +81,11 @@
+   if (G_LIKELY (!free_buffer))
+     {
+       hb_buffer_reset (buffer);
++#ifdef __EMSCRIPTEN__
++      cached_buffer_in_use = FALSE;
++#else
+       G_UNLOCK (cached_buffer);
++#endif
+     }
+   else
+     hb_buffer_destroy (buffer);

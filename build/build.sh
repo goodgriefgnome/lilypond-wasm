@@ -236,6 +236,9 @@ step_fontconfig() {
 
 step_pango() {
   patch_once "$SRC/pango-1.56.4" pango-single-thread.patch
+  # patches/pango-reentrant-shaping.patch: shaping can re-enter itself, and without threads the
+  # lock that hands the nested call a fresh HarfBuzz buffer never reports busy.
+  patch_once "$SRC/pango-1.56.4" pango-reentrant-shaping.patch
   meson_devel_build pango "$SRC/pango-1.56.4" --wrap-mode=nofallback -Dfontconfig=enabled -Dfreetype=enabled -Dcairo=enabled \
     -Dxft=disabled -Dintrospection=disabled -Dbuild-testsuite=false -Dbuild-examples=false \
     -Ddocumentation=false
