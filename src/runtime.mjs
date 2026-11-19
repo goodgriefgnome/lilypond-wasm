@@ -100,7 +100,7 @@ export async function loadRuntime(bytes, { onProgress } = {}) {
   })
 }
 
-function inputPath(name) {
+function virtualPath(root, kind, name) {
   if (
     !name ||
     name.startsWith('/') ||
@@ -108,8 +108,18 @@ function inputPath(name) {
     name.includes('\0') ||
     name.split('/').some((p) => !p || p === '.' || p === '..')
   )
-    throw new Error(`Invalid input filename: ${name}`)
-  return `/input/${name}`
+    throw new Error(`Invalid ${kind} filename: ${name}`)
+  return `${root}/${name}`
+}
+const inputPath = (name) => virtualPath('/input', 'input', name)
+const fontPath = (name) => virtualPath('/fonts', 'font', name)
+
+/** The runtime's fonts.conf with /fonts added, so fontconfig finds the caller's fonts the way a
+ *  desktop install finds system fonts: by family name, with no path in the score. */
+function withFontDirectory(conf) {
+  const text = decoder.decode(conf)
+  if (!text.includes('</fontconfig>')) throw new Error('Invalid runtime fonts.conf')
+  return text.replace('</fontconfig>', '  <dir>/fonts</dir>\n</fontconfig>')
 }
 
 const FORMATS = ['svg', 'pdf', 'png', 'ps', 'eps', 'midi']
@@ -162,6 +172,7 @@ export async function compile(
     assets,
     wasmModule,
     files = {},
+    fonts = {},
     filename = 'score.ly',
     includePaths = [],
     format = 'svg',
@@ -174,6 +185,7 @@ export async function compile(
   const outputFlags = outputArgs(format, resolution)
   const mainPath = inputPath(filename)
   const inputs = Object.entries(files).map(([name, bytes]) => [inputPath(name), bytes])
+  const fontFiles = Object.entries(fonts).map(([name, bytes]) => [fontPath(name), bytes])
   const searchPaths = includePaths.map(inputPath)
   const settingsPath = includeSettings === undefined ? undefined : inputPath(includeSettings)
   assets ??= await loadRuntime()
@@ -203,6 +215,10 @@ export async function compile(
         }
         for (const [path, bytes] of assets) write(path, bytes)
         for (const [path, bytes] of inputs) write(path, bytes)
+        if (fontFiles.length) {
+          for (const [path, bytes] of fontFiles) write(path, bytes)
+          write('/fonts.conf', withFontDirectory(m.FS.readFile('/fonts.conf')))
+        }
         write(mainPath, source)
         for (const path of ['/output', '/tmp/fontconfig', '/lilypond/lib', '/home/wasm'])
           m.FS.mkdirTree(path)

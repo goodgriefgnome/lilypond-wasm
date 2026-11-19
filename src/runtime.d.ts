@@ -8,6 +8,9 @@ export interface CompileOptions {
   readonly wasmModule?: WebAssembly.Module
   /** Extra files visible to `\include`, keyed by relative path. */
   readonly files?: Readonly<Record<string, Uint8Array | string>>
+  /** Extra fonts (.otf, .ttf, .ttc, …), keyed by file name. Scores use them by family name,
+   *  as they would system fonts, e.g. `\paper { property-defaults.fonts.serif = "Caladea" }`. */
+  readonly fonts?: Readonly<Record<string, Uint8Array>>
   /** Virtual directories from `files` to search for `\include` files, in order. */
   readonly includePaths?: readonly string[]
   /** The name the source is compiled under. Affects `\include` resolution and log messages;

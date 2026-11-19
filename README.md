@@ -34,6 +34,26 @@ then releases its resources. Options include `format`, `filename`, `resolution`,
 include paths, cancellation, and log streaming. Failed LilyPond runs throw
 `LilyPondCompileError` with `exitCode` and `logs`.
 
+## Include files and fonts
+
+`files` adds files that `\include` can find, keyed by path relative to the score, and
+`includePaths` names directories among them to search as well. `fonts` adds font files, which a
+score then uses by family name, as it would fonts installed on a desktop:
+
+```js
+const result = await compile(
+  `\\version "2.26.0"
+\\include "parts/melody.ily"
+\\paper { property-defaults.fonts.serif = "Caladea" }
+{ \\melody }`,
+  {
+    format: 'pdf',
+    files: { 'parts/melody.ily': "melody = { c'4 d' e' f' }" },
+    fonts: { 'Caladea-Regular.ttf': fontBytes }, // Uint8Array
+  },
+)
+```
+
 ## Compile in a browser
 
 If using Vite, then the above should just work as long as you deploy all the assets Vite emits.

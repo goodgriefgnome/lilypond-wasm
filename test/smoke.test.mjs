@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { afterAll, test } from 'bun:test'
 import { createReusableCompiler, LilyPondCompileError } from '../src/index.mjs'
+import { loadRuntime } from '../src/runtime.mjs'
 
 const compiler = createReusableCompiler()
 afterAll(() => compiler.dispose())
@@ -67,10 +68,25 @@ test('invalid score returns failure and diagnostics', async () => {
   )
 })
 
+test('extra fonts are visible to fontconfig', async () => {
+  // Any font will do: a copy of one LilyPond ships, under a directory of the caller's own.
+  const assets = await loadRuntime()
+  const [, font] = assets.find(([path]) => path.endsWith('/texgyrecursor-regular.otf'))
+  const listed = await compiler.compile('\\version "2.26.0"\n#(ly:font-config-display-fonts)\n', {
+    format: 'midi',
+    fonts: { 'mine/cursor.otf': font },
+  })
+  assert.ok(listed.logs.includes('Font dir: /fonts/mine'), listed.logs.join('\n'))
+})
+
 test('input path validation', async () => {
   await assert.rejects(
     compiler.compile(source, { files: { '../escape.ly': '' } }),
     /Invalid input filename/,
+  )
+  await assert.rejects(
+    compiler.compile(source, { fonts: { '/etc/x.otf': new Uint8Array() } }),
+    /Invalid font filename/,
   )
 })
 
